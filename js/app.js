@@ -202,7 +202,14 @@ async function loadBooksData() {
     try {
       updateApiStatus('connecting', 'กำลังดึงข้อมูลจาก Google Sheets...');
       const response = await fetch(state.apiUrl + '?action=list');
-      const result = await response.json();
+      const text = await response.text();
+
+      // ตรวจสอบว่าคำตอบที่ได้เป็น HTML (เช่น Google Login Page เนื่องจากยังไม่ได้ตั้งสิทธิ์เป็น Anyone)
+      if (text.trim().startsWith('<')) {
+        throw new Error('Google Apps Script ส่งกลับเป็นหน้า HTML (โปรดตั้งสิทธิ์ Web App เป็น "Anyone / ทุกคน")');
+      }
+
+      const result = JSON.parse(text);
 
       if (result.success && Array.isArray(result.data)) {
         state.books = result.data;
@@ -213,7 +220,7 @@ async function loadBooksData() {
     } catch (error) {
       console.error('API Connection error:', error);
       state.books = [];
-      updateApiStatus('demo', 'ไม่สามารถเชื่อมต่อ Google Sheets API ได้');
+      updateApiStatus('demo', error.message || 'ไม่สามารถเชื่อมต่อ Google Sheets API ได้');
     }
   } else {
     state.books = [];
@@ -465,60 +472,97 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
   let pdfDoc = null;
 
-  // 1. ดึง Base64 จาก Google Apps Script API (ขยายเวลา Timeout เป็น 45 วินาที เพื่อให้ Flipbook โหลดเปิดได้สำเร็จ 100%)
+  // 1. ดึงไฟล์ PDF ผ่าน Google Apps Script API (ช่องทางหลักที่เสถียรที่สุด 100%)
   if (state.apiUrl && fileId) {
-    showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive สำหรับ 3D Flipbook...');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000); // ขยายเวลาเป็น 45 วินาที เพื่อรองรับไฟล์ขนาดใหญ่
-
+    showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive...');
     try {
-      const res = await fetch(`${state.apiUrl}?action=getPdf&fileId=${fileId}`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      const res = await fetch(`${state.apiUrl}?action=getPdf&fileId=${fileId}`);
+      const text = await res.text();
 
-      const json = await res.json();
+      if (!text.trim().startsWith('<')) {
+        const json = JSON.parse(text);
+        if (json.success && json.base64) {
+          showPdfLoading('กำลังประมวลผล 3D Flipbook...');
+          const uint8Bytes = base64ToUint8Array(json.base64);
 
-      if (json.success && json.base64) {
-        console.log(`[Batch Engine] Base64 payload received (${json.fileSize || json.base64.length} bytes)`);
-        showPdfLoading('กำลังสร้างโครงสร้างหนังสือ 3D Flipbook...');
-        const uint8Bytes = base64ToUint8Array(json.base64);
+          const loadingTask = pdfjsLib.getDocument({
+            data: uint8Bytes,
+            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
+            verbosity: 0,
+            stopAtErrors: false
+          });
 
-        const loadingTask = pdfjsLib.getDocument({
-          data: uint8Bytes,
-          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-          cMapPacked: true,
-          standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
-          verbosity: 0,
-          stopAtErrors: false
-        });
-
-        pdfDoc = await loadingTask.promise;
-        state.pdfDocInstance = pdfDoc;
-        console.log(`[Batch Engine] PDF structure parsed successfully (${pdfDoc.numPages} pages)`);
-      } else {
-        console.warn('[Batch Engine] Apps Script API error:', json ? json.error : 'Unknown response');
+          pdfDoc = await loadingTask.promise;
+          state.pdfDocInstance = pdfDoc;
+          console.log(`[Batch Engine] PDF parsed successfully via Apps Script API (${pdfDoc.numPages} pages)`);
+        }
       }
     } catch (apiErr) {
-      clearTimeout(timeoutId);
-      if (apiErr.name === 'AbortError') {
-        console.warn('[Batch Engine] Fetch PDF timed out (45s limit reached)');
-      } else {
-        console.warn('[Batch Engine] Fetch API error:', apiErr);
-      }
+      console.warn('[Batch Engine] Apps Script API fetch error:', apiErr);
     }
   }
 
-  // Fallback เข้าสู่ Drive Viewer เฉพาะกรณีดึงไฟล์ไม่ได้จริงๆ หรือเกิน 45 วินาที
+  // 2. สำรอง: หาก Apps Script ดึงไม่ได้ (เช่น ไฟล์ใหญ่เกินโควต้า GAS) -> ลองดึง ArrayBuffer ตรงจาก Google Drive Stream
+  if (!pdfDoc && fileId) {
+    showPdfLoading('กำลังสตรีมไฟล์ตรงจาก Google Drive...');
+    const directUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
+    try {
+      const res = await fetch(directUrl);
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        // ตรวจสอบว่าหัวไฟล์คือ PDF (%PDF-) ก่อนส่งให้ PDF.js ป้องกัน InvalidPDFException เหลืองใน Console
+        if (bytes.length > 1000 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+          const loadingTask = pdfjsLib.getDocument({
+            data: bytes,
+            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+            cMapPacked: true,
+            standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
+            verbosity: 0,
+            stopAtErrors: false
+          });
+          pdfDoc = await loadingTask.promise;
+          state.pdfDocInstance = pdfDoc;
+          console.log(`[Batch Engine] PDF parsed via Direct Stream (${pdfDoc.numPages} pages)`);
+        }
+      }
+    } catch (streamErr) {
+      console.warn('[Batch Engine] Direct stream fetch error:', streamErr);
+    }
+  }
+
+  // 3. สำรอง 2: ให้ PDF.js สตรีมผ่าน URL ตรง
+  if (!pdfDoc && fileId) {
+    try {
+      showPdfLoading('กำลังสตรีมผ่าน PDF Engine...');
+      const loadingTask = pdfjsLib.getDocument({
+        url: `https://lh3.googleusercontent.com/d/${fileId}`,
+        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+        cMapPacked: true,
+        standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
+        verbosity: 0,
+        stopAtErrors: false
+      });
+      pdfDoc = await loadingTask.promise;
+      state.pdfDocInstance = pdfDoc;
+      console.log(`[Batch Engine] PDF parsed via PDF.js URL stream (${pdfDoc.numPages} pages)`);
+    } catch (urlErr) {
+      console.warn('[Batch Engine] PDF.js URL stream error:', urlErr);
+    }
+  }
+
+  // Fallback เข้าสู่ Drive Viewer เฉพาะกรณีไม่สามารถดึงโครงสร้าง PDF ได้จากทุกช่องทาง
   if (!pdfDoc) {
     console.warn('[Batch Engine] Cannot read PDF structure, switching to Drive Viewer mode');
     switchToIframeMode('ไม่สามารถสร้าง 3D Flipbook ได้ สลับเข้าสู่โหมด Google Drive Viewer');
     return;
   }
 
-  // RENDER INITIAL BATCH OF PAGES (MAX 8 PAGES ON MOBILE / 20 PAGES ON DESKTOP)
+  // RENDER INITIAL BATCH OF 20 PAGES IMMEDIATELY FOR ULTRA-FAST START
   try {
-    showPdfLoading('กำลังสร้าง 3D Flipbook...');
+    showPdfLoading('กำลังเปิด 3D Flipbook...');
     const totalPages = pdfDoc.numPages;
     const isMobile = isMobileDevice();
 
@@ -529,55 +573,63 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
     elements.flipbookBook.innerHTML = '';
 
-    // สร้างโครงร่าง DOM Page Element ครบทุกหน้าเตรียมไว้
+    // โครงร่าง DOM Page Element ขาวล้วน (ตั้งค่าหน้า 1 เป็น Front Cover หน้าเดี่ยวตรงกลาง)
     const totalElementsCount = (totalPages % 2 !== 0) ? totalPages + 1 : totalPages;
     for (let p = 1; p <= totalElementsCount; p++) {
       const pageDiv = document.createElement('div');
       pageDiv.className = 'my-page';
       pageDiv.id = `myPage_${p}`;
-      pageDiv.innerHTML = `
-        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff; color:#64748b;">
-          <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:8px;"></i>
-          <span style="font-size:0.85rem; font-weight:600;">หน้า ${p > totalPages ? 'สิ้นสุด' : p}</span>
-        </div>
-      `;
+      
+      // ตั้งค่าหน้าปก (หน้า 1) และปกหลังให้เป็น Hard Cover เพื่อแสดงผลเป็นหน้าเดี่ยวตรงกลางเมื่อเริ่มเปิดหนังสือ
+      if (p === 1 || p === totalElementsCount) {
+        pageDiv.setAttribute('data-density', 'hard');
+      }
+
+      pageDiv.innerHTML = '<div style="width:100%; height:100%; background:#ffffff;"></div>';
       elements.flipbookBook.appendChild(pageDiv);
     }
 
-    // เรนเดอร์เฉพาะ 20 หน้าแรกทันที เพื่อให้เปิดได้อย่างรวดเร็ว
+    // เรนเดอร์เฉพาะ 20 หน้าแรกทันที เพื่อให้เปิดได้อย่างรวดเร็วที่สุด
     const initialLimit = Math.min(totalPages, CONFIG.INITIAL_RENDER_PAGES);
     for (let pageNum = 1; pageNum <= initialLimit; pageNum++) {
       showPdfLoading(`กำลังประมวลผลหน้า 3D Flipbook ${pageNum} / ${initialLimit}...`);
       await renderPdfPageToElement(pdfDoc, pageNum);
     }
 
-    // รอให้ DOM Layout สถิตนิ่ง 100ms
+    // ซ่อนหน้าจอโหลดทันทีหลัง 20 หน้าแรกเสร็จ
     await new Promise(resolve => setTimeout(resolve, 100));
     hidePdfLoading();
 
-    // เริ่มสร้าง 3D PageFlip Engine พร้อมปรับขนาดตามหน้าจอ
+    // เริ่มสร้าง 3D PageFlip Engine พร้อมปรับขนาดและเงาสร้างมิติ 3 มิติสมจริง
     if (window.St && window.St.PageFlip) {
       const pageFlip = new St.PageFlip(elements.flipbookBook, {
-        width: isMobile ? 330 : 440,
-        height: isMobile ? 480 : 600,
+        width: isMobile ? 320 : 440,
+        height: isMobile ? 460 : 600,
         size: 'stretch',
         minWidth: 260,
-        maxWidth: 600,
+        maxWidth: 1000,
         minHeight: 380,
         maxHeight: 800,
-        maxShadowOpacity: 0.5,
-        showCover: true,
-        mobileScrollSupport: false
+        drawShadow: true, // เปิดระบบเงา 3 มิติขณะพลิกหน้า
+        maxShadowOpacity: 0.45, // ปรับความเข้มของเงาการพับหน้ากระดาษให้มีมิติสวยงามสมจริง
+        showCover: true, // แสดงหน้าปกแบบหน้าเดี่ยวตรงกลางเมื่อเริ่มเปิด
+        usePortrait: isMobile, // บนมือถือแสดงหน้าเดียว (Portrait) / บนคอมพิวเตอร์แสดง 2 หน้าคู่ (Spread)
+        mobileScrollSupport: false,
+        flippingTime: 700 // ระยะเวลาในการพลิกหน้ากระดาษให้นุ่มนวล
       });
 
       pageFlip.loadFromHTML(elements.flipbookBook.querySelectorAll('.my-page'));
       state.pageFlipInstance = pageFlip;
+
+      // กำหนดสถานะตั้งต้นให้เป็นหน้า 1 (หน้าปกตรงกลางสำหรับ Desktop)
+      elements.flipbookBook.setAttribute('data-current-page', '1');
 
       // Event ติดตามการเปิดพลิกหน้า
       pageFlip.on('flip', (e) => {
         const current = e.data + 1;
         state.currentPage = current;
         elements.pageJumpInput.value = current;
+        elements.flipbookBook.setAttribute('data-current-page', String(current));
 
         // 1. ทยอยประมวลผลหน้าที่อยู่รอบข้างเข้าใกล้
         ensurePagesRenderedAround(current);
@@ -624,20 +676,7 @@ async function renderPdfPageToElement(pdfDoc, pageNum) {
 
   } catch (pageErr) {
     console.warn(`[Batch Engine] Render page ${pageNum} warning:`, pageErr);
-    const canvas = document.createElement('canvas');
-    canvas.width = 600;
-    canvas.height = 840;
-    canvas.className = 'page-canvas';
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 600, 840);
-    ctx.fillStyle = '#64748b';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`หน้า ${pageNum}`, 300, 420);
-
-    pageDiv.innerHTML = '';
-    pageDiv.appendChild(canvas);
+    pageDiv.innerHTML = '<div style="width:100%; height:100%; background:#ffffff;"></div>';
     state.renderedPageSet.add(pageNum);
   }
 }
@@ -654,12 +693,7 @@ function cleanupFarPages(currentPage) {
     if (Math.abs(pageNum - currentPage) > maxDistance) {
       const pageDiv = document.getElementById(`myPage_${pageNum}`);
       if (pageDiv) {
-        pageDiv.innerHTML = `
-          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff; color:#64748b;">
-            <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:8px;"></i>
-            <span style="font-size:0.85rem; font-weight:600;">หน้า ${pageNum}</span>
-          </div>
-        `;
+        pageDiv.innerHTML = '<div style="width:100%; height:100%; background:#ffffff;"></div>';
       }
       state.renderedPageSet.delete(pageNum);
     }
@@ -915,9 +949,7 @@ async function incrementViewCount(bookId) {
   }
 
   if (state.apiUrl) {
-    try {
-      fetch(`${state.apiUrl}?action=view&id=${bookId}`, { mode: 'no-cors' });
-    } catch (e) { }
+    fetch(`${state.apiUrl}?action=view&id=${bookId}`).catch(() => {});
   }
 }
 

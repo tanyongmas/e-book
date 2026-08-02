@@ -802,42 +802,108 @@ body {
   color: #86efac;
 }
 
-/* 3D Flipbook Stage */
+/* 3D Flipbook Stage & Photorealistic Book Shadows */
 .flipbook-stage {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 16px;
   position: relative;
-  overflow: hidden;
+  overflow: hidden !important;
 }
 
 .flipbook-book {
-  min-width: 320px;
-  min-height: 480px;
+  position: relative !important;
+  overflow: hidden !important;
+  min-width: 300px;
+  min-height: 440px;
   margin: 0 auto;
-  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
   border-radius: 4px;
 }
 
+/* StPageFlip Internal Overrides - Photorealistic 3D Shadows & Cover Fix */
+.stpageflip--container {
+  margin: 0 auto !important;
+  overflow: hidden !important;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 4px;
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1) !important;
+}
+
+/* จัดหน้าปก (หน้า 1) ให้อยู่ตรงกลางหน้าจอ 100% สำหรับคอมพิวเตอร์ Desktop */
+@media (min-width: 769px) {
+  .flipbook-book[data-current-page="1"] .stpageflip--container {
+    transform: translateX(-25%) !important;
+  }
+}
+
+/* ป้องกันภาพซ้อน: เมื่ออยู่หน้าปก (หน้า 1) ซ่อนทุกหน้าที่ไม่ใช่หน้าปกเด็ดขาด */
+.flipbook-book[data-current-page="1"] .my-page:not(#myPage_1) {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.stpageflip--wrapper {
+  overflow: hidden !important;
+}
+
+.stpageflip--page {
+  background-color: #ffffff !important;
+  overflow: hidden !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.05) !important;
+}
+
 .my-page {
-  background: #ffffff;
+  background: #ffffff !important;
   width: 100%;
   height: 100%;
   position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  transform: translateZ(0);
+}
+
+/* 3D Book Spine Crease Gradient Shadow (เงาร่องกลางหนังสือ 3 มิติ) */
+.my-page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 32px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* เงาร่องรอยต่อฝั่งซ้าย */
+.stpageflip--page.--left .my-page::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.04) 50%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* เงาร่องรอยต่อฝั่งขวา */
+.stpageflip--page.--right .my-page::after {
+  left: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.04) 50%, rgba(0, 0, 0, 0) 100%);
 }
 
 .page-canvas {
   width: 100% !important;
   height: 100% !important;
-  object-fit: contain;
-  display: block;
+  object-fit: contain !important;
+  display: block !important;
+  background: #ffffff !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  pointer-events: none;
 }
 
 .pdf-iframe {
