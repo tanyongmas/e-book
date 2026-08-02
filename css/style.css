@@ -869,15 +869,15 @@ body {
 /* จัดหน้าปก (หน้า 1) ให้อยู่ตรงกลางหน้าจอ 100% และขยายขนาดในโหมดเต็มจออย่างสวยงาม */
 @media (min-width: 769px) {
   .flipbook-book[data-current-page="1"] .stpageflip--container {
-    transform: translateX(-25%) !important;
+    transform: translateX(-25%);
   }
 
   .pdf-modal-content.is-fullscreen .flipbook-book[data-current-page="1"] .stpageflip--container {
-    transform: translateX(-25%) scale(1.15) !important;
+    transform: translateX(-25%) scale(1.15);
   }
 
   .pdf-modal-content.is-fullscreen .stpageflip--container {
-    transform: scale(1.15) !important;
+    transform: scale(1.15);
   }
 }
 

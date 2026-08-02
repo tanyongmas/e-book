@@ -193,15 +193,13 @@ function initEventListeners() {
   }
 
   // Zoom Control Buttons
-  if (elements.zoomInBtn) {
-    elements.zoomInBtn.addEventListener('click', () => applyZoom(CONFIG.ZOOM_STEP));
-  }
-  if (elements.zoomOutBtn) {
-    elements.zoomOutBtn.addEventListener('click', () => applyZoom(-CONFIG.ZOOM_STEP));
-  }
-  if (elements.zoomResetBtn) {
-    elements.zoomResetBtn.addEventListener('click', () => applyZoom(0));
-  }
+  const zIn = document.getElementById('zoomInBtn');
+  const zOut = document.getElementById('zoomOutBtn');
+  const zReset = document.getElementById('zoomResetBtn');
+
+  if (zIn) zIn.addEventListener('click', (e) => { e.preventDefault(); applyZoom(CONFIG.ZOOM_STEP); });
+  if (zOut) zOut.addEventListener('click', (e) => { e.preventDefault(); applyZoom(-CONFIG.ZOOM_STEP); });
+  if (zReset) zReset.addEventListener('click', (e) => { e.preventDefault(); applyZoom(0); });
 
   // Window Backdrop click
   window.addEventListener('click', (e) => {
@@ -875,11 +873,12 @@ function applyZoom(delta) {
     state.zoomLevel = Math.min(CONFIG.MAX_ZOOM, Math.max(CONFIG.MIN_ZOOM, parseFloat(nextZoom.toFixed(2))));
   }
 
-  if (elements.zoomLevelText) {
-    elements.zoomLevelText.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+  const zoomText = document.getElementById('zoomLevelText') || elements.zoomLevelText;
+  if (zoomText) {
+    zoomText.textContent = `${Math.round(state.zoomLevel * 100)}%`;
   }
 
-  const container = document.querySelector('.stpageflip--container');
+  const container = document.querySelector('.stpageflip--container') || document.getElementById('flipbookBook');
   if (container) {
     const isDesktop = window.innerWidth > 768;
     const isCover = elements.flipbookBook && elements.flipbookBook.getAttribute('data-current-page') === '1';
@@ -888,18 +887,25 @@ function applyZoom(delta) {
     let baseScale = isFS ? 1.15 : 1.0;
     let totalScale = baseScale * state.zoomLevel;
 
+    container.style.transformOrigin = 'center center';
+    container.style.transition = 'transform 0.2s ease-out';
+
+    let transformStr = '';
     if (isDesktop && isCover) {
-      container.style.transform = `translateX(-25%) scale(${totalScale})`;
+      transformStr = `translateX(-25%) scale(${totalScale})`;
     } else {
-      container.style.transform = `scale(${totalScale})`;
+      transformStr = `scale(${totalScale})`;
     }
+
+    container.style.setProperty('transform', transformStr, 'important');
   }
 
-  if (elements.flipbookStage) {
+  const stage = document.getElementById('flipbookStage') || elements.flipbookStage;
+  if (stage) {
     if (state.zoomLevel > 1.0) {
-      elements.flipbookStage.style.overflow = 'auto';
+      stage.style.setProperty('overflow', 'auto', 'important');
     } else {
-      elements.flipbookStage.style.overflow = 'hidden';
+      stage.style.setProperty('overflow', 'hidden', 'important');
     }
   }
 }
