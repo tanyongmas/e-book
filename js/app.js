@@ -9,7 +9,7 @@
 
 // Initial State & Configuration
 const CONFIG = {
-  DEFAULT_API_URL: '', // วาง Google Apps Script Web App URL ของคุณที่นี่เพื่อเป็นค่าเริ่มต้นให้ทุกอุปกรณ์
+  DEFAULT_API_URL: 'https://script.google.com/macros/s/AKfycbwB2cmP9p1J_r6gshIkhfGucZeTnXPrRdKGgGrfqQbEWT5a_OA2TytI-T0sRJBeqasbpw/exec', // วาง Google Apps Script Web App URL ของคุณที่นี่เพื่อเป็นค่าเริ่มต้นให้ทุกอุปกรณ์
   API_URL_KEY: 'webebook_api_url',
   THEME_KEY: 'webebook_theme',
   ADMIN_PIN_KEY: 'webebook_admin_pin',
@@ -51,7 +51,7 @@ const elements = {
   totalBooksCount: document.getElementById('totalBooksCount'),
   totalViewsCount: document.getElementById('totalViewsCount'),
   totalCategoriesCount: document.getElementById('totalCategoriesCount'),
-  
+
   // PDF Reader Flipbook Modal
   pdfModal: document.getElementById('pdfModal'),
   pdfModalContent: document.getElementById('pdfModalContent'),
@@ -71,7 +71,7 @@ const elements = {
   pdfOpenExternalBtn: document.getElementById('pdfOpenExternalBtn'),
   pdfDownloadBtn: document.getElementById('pdfDownloadBtn'),
   closePdfModalBtn: document.getElementById('closePdfModalBtn'),
-  
+
   // Detail Modal
   detailModal: document.getElementById('detailModal'),
   closeDetailModalBtn: document.getElementById('closeDetailModalBtn'),
@@ -83,7 +83,7 @@ const elements = {
   detailViews: document.getElementById('detailViews'),
   detailDesc: document.getElementById('detailDesc'),
   detailReadBtn: document.getElementById('detailReadBtn'),
-  
+
   // Status Badge
   apiStatusBadge: document.getElementById('apiStatusBadge')
 };
@@ -231,7 +231,7 @@ async function loadBooksData() {
  */
 function updateApiStatus(status, text) {
   if (!elements.apiStatusBadge) return;
-  
+
   let icon = 'fas fa-times-circle';
   let badgeClass = 'badge-disconnected';
   let titleText = text || 'ไม่สามารถเชื่อมต่อ Google Sheets API ได้';
@@ -271,14 +271,14 @@ function renderCategoryChips() {
   elements.categoryChips.innerHTML = '';
 
   state.categories.forEach(cat => {
-    const count = cat === 'ทั้งหมด' 
-      ? state.books.length 
+    const count = cat === 'ทั้งหมด'
+      ? state.books.length
       : state.books.filter(b => b.category === cat).length;
 
     const chip = document.createElement('button');
     chip.className = `chip ${state.activeCategory === cat ? 'active' : ''}`;
     chip.innerHTML = `${cat} <span class="chip-count">${count}</span>`;
-    
+
     chip.addEventListener('click', () => {
       state.activeCategory = cat;
       renderCategoryChips();
@@ -297,7 +297,7 @@ function applyFilters() {
   }
 
   if (state.searchQuery) {
-    filtered = filtered.filter(b => 
+    filtered = filtered.filter(b =>
       b.title.toLowerCase().includes(state.searchQuery) ||
       b.author.toLowerCase().includes(state.searchQuery) ||
       b.description.toLowerCase().includes(state.searchQuery)
@@ -338,7 +338,7 @@ function renderBooksGrid() {
   state.filteredBooks.forEach(book => {
     const card = document.createElement('div');
     card.className = 'book-card';
-    
+
     const coverUrl = book.coverUrl || getFallbackCoverSvg(book.title, book.category);
 
     card.innerHTML = `
@@ -468,7 +468,7 @@ async function loadPdfFlipbookDynamicBatch(book) {
       if (json.success && json.base64) {
         console.log(`[Batch Engine] Base64 payload received (${json.fileSize || json.base64.length} bytes)`);
         const uint8Bytes = base64ToUint8Array(json.base64);
-        
+
         const loadingTask = pdfjsLib.getDocument({
           data: uint8Bytes,
           cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
@@ -708,7 +708,7 @@ function toggleFullscreen() {
 function handleFullscreenChange() {
   const isFS = !!document.fullscreenElement;
   const icon = elements.fullscreenFlipbookBtn.querySelector('i');
-  
+
   if (isFS) {
     elements.pdfModalContent.classList.add('is-fullscreen');
     if (icon) icon.className = 'fas fa-compress';
@@ -722,7 +722,7 @@ function destroyPageFlip() {
   if (state.pageFlipInstance) {
     try {
       state.pageFlipInstance.destroy();
-    } catch (e) {}
+    } catch (e) { }
     state.pageFlipInstance = null;
   }
   state.pdfDocInstance = null;
@@ -762,7 +762,7 @@ function switchToIframeMode(reasonText) {
 
 function toggleViewerMode() {
   state.isFlipbookMode = !state.isFlipbookMode;
-  
+
   if (!state.isFlipbookMode && state.currentBook) {
     let embedUrl = getDriveEmbedUrl(state.currentBook.pdfEmbedUrl || state.currentBook.pdfDriveUrl || '');
     if (state.currentPage > 1) {
@@ -788,7 +788,7 @@ function updateViewerLayoutMode() {
 
 function closePdfModal() {
   if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
+    document.exitFullscreen().catch(() => { });
   }
   elements.pdfModal.classList.remove('active');
   destroyPageFlip();
@@ -806,14 +806,14 @@ function extractGoogleDriveFileId(url) {
   if (/^[a-zA-Z0-9_-]{20,60}$/.test(cleanUrl)) {
     return cleanUrl;
   }
-  
+
   // 2. กรณีใส่ลิงก์ Google Drive รูปแบบต่างๆ
   const match = cleanUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
-                cleanUrl.match(/id=([a-zA-Z0-9_-]+)/) ||
-                cleanUrl.match(/\/open\?id=([a-zA-Z0-9_-]+)/) ||
-                cleanUrl.match(/\/uc\?id=([a-zA-Z0-9_-]+)/) ||
-                cleanUrl.match(/file\/d\/([a-zA-Z0-9_-]+)/);
-                
+    cleanUrl.match(/id=([a-zA-Z0-9_-]+)/) ||
+    cleanUrl.match(/\/open\?id=([a-zA-Z0-9_-]+)/) ||
+    cleanUrl.match(/\/uc\?id=([a-zA-Z0-9_-]+)/) ||
+    cleanUrl.match(/file\/d\/([a-zA-Z0-9_-]+)/);
+
   return match ? match[1] : null;
 }
 
@@ -822,7 +822,7 @@ function extractGoogleDriveFileId(url) {
  */
 function openDetailModal(book) {
   state.currentBook = book;
-  
+
   elements.detailCover.src = book.coverUrl || getFallbackCoverSvg(book.title, book.category);
   elements.detailCover.style.cursor = 'pointer';
   elements.detailCover.title = 'คลิกที่รูปปกเพื่อเปิดอ่าน 3D Flipbook ทันที';
@@ -861,7 +861,7 @@ async function incrementViewCount(bookId) {
   if (state.apiUrl) {
     try {
       fetch(`${state.apiUrl}?action=view&id=${bookId}`, { mode: 'no-cors' });
-    } catch (e) {}
+    } catch (e) { }
   }
 }
 
