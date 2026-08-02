@@ -806,12 +806,20 @@ body {
 .flipbook-stage {
   width: 100%;
   height: 100%;
+  max-height: calc(100vh - 140px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 20px;
   position: relative;
   overflow: hidden !important;
+  box-sizing: border-box;
+  background: var(--bg-dark, #0f172a);
+}
+
+.pdf-modal-content.is-fullscreen .flipbook-stage {
+  max-height: calc(100vh - 50px) !important;
+  padding: 32px !important;
 }
 
 .flipbook-book {
@@ -832,10 +840,18 @@ body {
   transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1) !important;
 }
 
-/* จัดหน้าปก (หน้า 1) ให้อยู่ตรงกลางหน้าจอ 100% สำหรับคอมพิวเตอร์ Desktop */
+/* จัดหน้าปก (หน้า 1) ให้อยู่ตรงกลางหน้าจอ 100% และขยายขนาดในโหมดเต็มจออย่างสวยงาม */
 @media (min-width: 769px) {
   .flipbook-book[data-current-page="1"] .stpageflip--container {
     transform: translateX(-25%) !important;
+  }
+
+  .pdf-modal-content.is-fullscreen .flipbook-book[data-current-page="1"] .stpageflip--container {
+    transform: translateX(-25%) scale(1.15) !important;
+  }
+
+  .pdf-modal-content.is-fullscreen .stpageflip--container {
+    transform: scale(1.15) !important;
   }
 }
 

@@ -432,16 +432,57 @@ async function openPdfReader(book) {
 
   elements.pdfModalTitle.textContent = book.title;
 
-  elements.pdfOpenExternalBtn.href = book.pdfDriveUrl || '#';
-  elements.pdfDownloadBtn.href = book.pdfDriveUrl || '#';
+  if (elements.pdfOpenExternalBtn) elements.pdfOpenExternalBtn.href = book.pdfDriveUrl || '#';
+  if (elements.pdfDownloadBtn) elements.pdfDownloadBtn.href = book.pdfDriveUrl || '#';
 
-  elements.pdfIframe.src = 'about:blank';
+  const fallbackNotice = document.getElementById('pdfFallbackNotice');
+  if (fallbackNotice) fallbackNotice.style.display = 'none';
+
+  if (elements.pdfIframe) {
+    elements.pdfIframe.src = 'about:blank';
+    elements.pdfIframe.style.display = 'none';
+  }
+  if (elements.flipbookStage) {
+    elements.flipbookStage.style.display = 'flex';
+  }
+
   elements.pdfModal.classList.add('active');
   incrementViewCount(book.id);
 
   state.isFlipbookMode = true;
-  updateViewerLayoutMode();
   await loadPdfFlipbookDynamicBatch(book);
+}
+
+function switchToIframeMode(message) {
+  state.isFlipbookMode = false;
+  hidePdfLoading();
+  if (message) showToast(message, 'warning');
+
+  if (elements.flipbookStage) elements.flipbookStage.style.display = 'none';
+  if (elements.pdfIframe) elements.pdfIframe.style.display = 'none';
+
+  const book = state.currentBook;
+  const driveUrl = book ? (book.pdfDriveUrl || book.pdfEmbedUrl || '#') : '#';
+
+  let fallbackContainer = document.getElementById('pdfFallbackNotice');
+  if (!fallbackContainer) {
+    fallbackContainer = document.createElement('div');
+    fallbackContainer.id = 'pdfFallbackNotice';
+    fallbackContainer.style.cssText = 'display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; text-align:center; height:100%; width:100%; color:#cbd5e1;';
+    elements.pdfModalContent.appendChild(fallbackContainer);
+  }
+
+  fallbackContainer.style.display = 'flex';
+  fallbackContainer.innerHTML = `
+    <div style="background: rgba(30, 41, 59, 0.9); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; padding: 36px 28px; max-width: 480px; box-shadow: 0 15px 35px rgba(0,0,0,0.4); text-align: center;">
+      <i class="fas fa-exclamation-triangle" style="font-size: 3.2rem; color: #f59e0b; margin-bottom: 16px;"></i>
+      <h3 style="font-size: 1.25rem; font-weight: 700; color: #ffffff; margin-bottom: 8px;">ไม่สามารถแสดงผล 3D Flipbook ได้</h3>
+      <p style="font-size: 0.9rem; color: #94a3b8; margin-bottom: 24px; line-height: 1.6;">${message || 'ไฟล์นี้ตั้งค่าสิทธิ์ส่วนบุคคล หรือยังไม่ได้เปิดสิทธิ์แชร์สาธารณะใน Google Drive'}</p>
+      <a href="${driveUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="padding: 12px 24px; font-size: 1rem; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%;">
+        <i class="fab fa-google-drive" style="font-size: 1.2rem;"></i> เปิดอ่านไฟล์บน Google Drive
+      </a>
+    </div>
+  `;
 }
 
 function getDriveEmbedUrl(url) {
@@ -472,7 +513,7 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
   let pdfDoc = null;
 
-  // 1. ดึงไฟล์ PDF ผ่าน Google Apps Script API (ช่องทางหลักที่เสถียรที่สุด 100%)
+  // 1. ดึงไฟล์ PDF ผ่าน Google Apps Script API (ช่องทางหลักที่เสถียรที่สุด)
   if (state.apiUrl && fileId) {
     showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive...');
     try {
@@ -497,6 +538,8 @@ async function loadPdfFlipbookDynamicBatch(book) {
           pdfDoc = await loadingTask.promise;
           state.pdfDocInstance = pdfDoc;
           console.log(`[Batch Engine] PDF parsed successfully via Apps Script API (${pdfDoc.numPages} pages)`);
+        } else {
+          console.warn('[Batch Engine] Apps Script API note:', json ? json.error : 'No base64');
         }
       }
     } catch (apiErr) {
@@ -504,17 +547,18 @@ async function loadPdfFlipbookDynamicBatch(book) {
     }
   }
 
-  // 2. สำรอง: หาก Apps Script ดึงไม่ได้ (เช่น ไฟล์ใหญ่เกินโควต้า GAS) -> ลองดึง ArrayBuffer ตรงจาก Google Drive Stream
+  // 2. สำรองสำหรับไฟล์ใหญ่ (เช่น เทศบัญญัติงบประมาณ >15MB): สตรีม ArrayBuffer ตรงจาก Google Drive CDN
   if (!pdfDoc && fileId) {
-    showPdfLoading('กำลังสตรีมไฟล์ตรงจาก Google Drive...');
-    const directUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
+    showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF ขนาดใหญ่...');
     try {
-      const res = await fetch(directUrl);
+      const cdnUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+      const res = await fetch(cdnUrl);
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
-        // ตรวจสอบว่าหัวไฟล์คือ PDF (%PDF-) ก่อนส่งให้ PDF.js ป้องกัน InvalidPDFException เหลืองใน Console
+        // ตรวจสอบว่าหัวไฟล์คือ PDF (%PDF-)
         if (bytes.length > 1000 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
+          showPdfLoading('กำลังสร้าง 3D Flipbook...');
           const loadingTask = pdfjsLib.getDocument({
             data: bytes,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
@@ -523,40 +567,21 @@ async function loadPdfFlipbookDynamicBatch(book) {
             verbosity: 0,
             stopAtErrors: false
           });
+
           pdfDoc = await loadingTask.promise;
           state.pdfDocInstance = pdfDoc;
-          console.log(`[Batch Engine] PDF parsed via Direct Stream (${pdfDoc.numPages} pages)`);
+          console.log(`[Batch Engine] Large PDF parsed via Direct CDN (${pdfDoc.numPages} pages)`);
         }
       }
-    } catch (streamErr) {
-      console.warn('[Batch Engine] Direct stream fetch error:', streamErr);
+    } catch (cdnErr) {
+      console.warn('[Batch Engine] Direct CDN fetch note:', cdnErr);
     }
   }
 
-  // 3. สำรอง 2: ให้ PDF.js สตรีมผ่าน URL ตรง
-  if (!pdfDoc && fileId) {
-    try {
-      showPdfLoading('กำลังสตรีมผ่าน PDF Engine...');
-      const loadingTask = pdfjsLib.getDocument({
-        url: `https://lh3.googleusercontent.com/d/${fileId}`,
-        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-        cMapPacked: true,
-        standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
-        verbosity: 0,
-        stopAtErrors: false
-      });
-      pdfDoc = await loadingTask.promise;
-      state.pdfDocInstance = pdfDoc;
-      console.log(`[Batch Engine] PDF parsed via PDF.js URL stream (${pdfDoc.numPages} pages)`);
-    } catch (urlErr) {
-      console.warn('[Batch Engine] PDF.js URL stream error:', urlErr);
-    }
-  }
-
-  // Fallback เข้าสู่ Drive Viewer เฉพาะกรณีไม่สามารถดึงโครงสร้าง PDF ได้จากทุกช่องทาง
+  // Fallback เฉพาะกรณีที่ดึงไม่ได้จริงๆ (เช่น ไฟล์ไม่ได้เปิดสิทธิ์แชร์สาธารณะ หรือถูกลบ)
   if (!pdfDoc) {
-    console.warn('[Batch Engine] Cannot read PDF structure, switching to Drive Viewer mode');
-    switchToIframeMode('ไม่สามารถสร้าง 3D Flipbook ได้ สลับเข้าสู่โหมด Google Drive Viewer');
+    console.warn('[Batch Engine] Cannot read PDF structure, switching to fallback card mode');
+    switchToIframeMode('ไฟล์เทศบัญญัติตั้งค่าสิทธิ์แชร์ส่วนบุคคล หรือไม่ได้เปิดสาธารณะบน Google Drive');
     return;
   }
 
@@ -806,6 +831,16 @@ function handleFullscreenChange() {
     elements.pdfModalContent.classList.remove('is-fullscreen');
     if (icon) icon.className = 'fas fa-expand';
   }
+
+  // แจ้งเตือนย่อ/ขยายขนาดของ 3D Flipbook ทันทีเมื่อสลับโหมดเต็มจอ/โหมดปกติ
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+    if (state.pageFlipInstance) {
+      try {
+        state.pageFlipInstance.update();
+      } catch (e) { }
+    }
+  }, 150);
 }
 
 function destroyPageFlip() {
