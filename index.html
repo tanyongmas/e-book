@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Book Library - ห้องสมุดอิเล็กทรอนิกส์เทศบาล</title>
+    <meta name="description" content="ระบบบริการอ่าน E-Book วารสาร คู่มือประชาชน และเอกสารเผยแพร่ออนไลน์ฟรี">
+
+    <!-- Google Fonts: Kanit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Kanit:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- PDF.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- PageFlip (3D Interactive Flipbook Engine) -->
+    <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+
+    <!-- App Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <!-- Header & Navigation -->
+    <header class="main-header">
+        <div class="app-container">
+            <nav class="navbar">
+                <a href="#" class="brand-logo">
+                    <img src="img/Logo.png" alt="โลโก้เทศบาลตำบลตันหยงมัส" class="brand-logo-img"
+                        style="height: 48px; width: auto; object-fit: contain;">
+                    <div>
+                        <div class="brand-title" style="font-size: 1.15rem; font-weight: 700; color: var(--text-main);">
+                            E-book เทศบาลตำบลตันหยงมัส</div>
+                        <div class="brand-subtitle"
+                            style="font-size: 0.78rem; color: var(--text-muted); font-weight: 400;">เทศบาลตำบลตันหยงมัส
+                            อำเภอระแงะ จังหวัดนราธิวาส</div>
+                    </div>
+                </a>
+
+                <div class="nav-actions">
+                    <div id="apiStatusBadge" class="api-status-badge badge-connecting" title="กำลังตรวจสอบการเชื่อมต่อ API...">
+                        <i class="fas fa-spinner fa-spin"></i>
+                    </div>
+
+                    <button id="themeToggleBtn" class="btn btn-icon" title="สลับธีม สว่าง/มืด">
+                        <i class="fas fa-moon"></i>
+                    </button>
+
+                    <button id="adminBtn" class="btn btn-icon" title="แผงแอดมิน">
+                        <i class="fas fa-user-shield"></i>
+                    </button>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="app-container">
+
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <h1 class="hero-title">ศูนย์รวม E-Book และเอกสารเผยแพริดิจิทัล</h1>
+            <p class="hero-desc">
+                บริการอ่านหนังสือออนไลน์ วารสารประชาสัมพันธ์ คู่มือประชาชน และรายงานผลการดำเนินงาน สามารถเปิดอ่านแบบ 3D
+                Flipbook ได้ทันที 24 ชั่วโมง
+            </p>
+
+            <!-- Stats Overview Row -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-icon blue"><i class="fas fa-book"></i></div>
+                    <div>
+                        <div id="totalBooksCount" class="stat-val">0</div>
+                        <div class="stat-lbl">หนังสือในคลังทั้งหมด</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon purple"><i class="fas fa-eye"></i></div>
+                    <div>
+                        <div id="totalViewsCount" class="stat-val">0</div>
+                        <div class="stat-lbl">จำนวนการเข้าอ่านสะสม</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon amber"><i class="fas fa-tags"></i></div>
+                    <div>
+                        <div id="totalCategoriesCount" class="stat-val">0</div>
+                        <div class="stat-lbl">หมวดหมู่หนังสือ</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Search & Filters Container -->
+        <section class="filter-wrapper">
+            <div class="search-box-row">
+                <div class="search-input-group">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchInput" class="search-input"
+                        placeholder="ค้นหาด้วยชื่อหนังสือ, ผู้แต่ง, หรือคำค้น..." autocomplete="off">
+                </div>
+
+                <select id="sortSelect" class="sort-select">
+                    <option value="latest">เรียงตาม: ล่าสุด</option>
+                    <option value="popular">เรียงตาม: ยอดนิยม (คนอ่านมากสุด)</option>
+                    <option value="title">เรียงตาม: ก-ฮ (ชื่อหนังสือ)</option>
+                </select>
+            </div>
+
+            <!-- Category Filter Chips -->
+            <div id="categoryChips" class="category-chips">
+                <!-- Dynamic Chips Generated via JS -->
+            </div>
+        </section>
+
+        <!-- Books Catalog Grid Section -->
+        <section>
+            <div class="catalog-header">
+                <h2 class="catalog-title"><i class="fas fa-layer-group"></i> รายการ E-Book ทั้งหมด</h2>
+            </div>
+
+            <div id="booksGrid" class="books-grid">
+                <!-- Dynamic E-Book Cards Generated via JS -->
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+        <div class="app-container">
+            <div class="footer-bottom">
+                &copy; 2026 E-Book Web Application. เทศบาลตำบลตันหยงมัส.
+            </div>
+        </div>
+    </footer>
+
+    <!-- ============================================================================== -->
+    <!-- MODALS SECTION                                                                 -->
+    <!-- ============================================================================== -->
+
+    <!-- 1. PDF Flipbook Reader Viewer Modal -->
+    <div id="pdfModal" class="modal-overlay">
+        <div id="pdfModalContent" class="modal-content pdf-modal-content">
+
+            <!-- Top Toolbar -->
+            <div class="pdf-toolbar">
+                <div class="pdf-info">
+                    <i class="fas fa-book-open" style="color: var(--brand-primary); font-size: 1.2rem;"></i>
+                    <div id="pdfModalTitle" class="pdf-title">กำลังโหลด Flipbook...</div>
+                </div>
+
+                <!-- Flipbook Page Navigation & Search Page Input -->
+                <div class="pdf-flip-controls">
+                    <button id="prevPageBtn" class="btn btn-secondary" style="padding: 6px 12px;" title="หน้าก่อนหน้า">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+
+                    <div class="page-search-box">
+                        <span>หน้า</span>
+                        <input type="number" id="pageJumpInput" class="page-jump-input" min="1" value="1"
+                            title="พิมพ์เลขหน้าแล้วกด Enter เพื่อไปยังหน้านั้น">
+                        <span>/ <span id="totalPagesText">1</span></span>
+                    </div>
+
+                    <button id="nextPageBtn" class="btn btn-secondary" style="padding: 6px 12px;" title="หน้าถัดไป">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- Toolbar Right Controls -->
+                <div class="pdf-controls">
+                    <button id="fullscreenFlipbookBtn" class="btn btn-secondary"
+                        title="เปิดอ่านแบบเต็มหน้าจอ (Fullscreen)">
+                        <i class="fas fa-expand"></i> <span class="btn-text-desktop">เต็มจอ</span>
+                    </button>
+
+                    <button id="toggleViewerModeBtn" class="btn btn-secondary"
+                        title="สลับโหมดมุมมอง (Flipbook / Drive Viewer)">
+                        <i class="fas fa-sync-alt"></i> <span id="viewerModeText" class="btn-text-desktop">โหมด
+                            Flipbook</span>
+                    </button>
+
+                    <a id="pdfOpenExternalBtn" href="#" target="_blank" class="btn btn-secondary"
+                        title="เปิดใน Google Drive">
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                    <a id="pdfDownloadBtn" href="#" target="_blank" download class="btn btn-primary"
+                        title="ดาวน์โหลดไฟล์ PDF">
+                        <i class="fas fa-download"></i>
+                    </a>
+                    <button id="closePdfModalBtn" class="btn btn-icon" title="ปิดหน้าต่าง">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Flipbook Stage View -->
+            <div class="pdf-viewer-container">
+
+                <!-- Loading Progress Screen -->
+                <div id="pdfLoadingProgress" class="pdf-loading-screen">
+                    <div class="spinner"><i class="fas fa-spinner fa-spin"></i></div>
+                    <div id="pdfLoadingStatusText" class="loading-text">กำลังแปลงไฟล์ PDF เป็น 3D Flipbook...</div>
+                </div>
+
+                <!-- 3D Flipbook Container -->
+                <div id="flipbookStage" class="flipbook-stage">
+                    <div id="flipbookBook" class="flipbook-book">
+                        <!-- Dynamic pages injected by PDF.js & PageFlip -->
+                    </div>
+                </div>
+
+                <!-- Fallback iframe -->
+                <iframe id="pdfIframe" class="pdf-iframe" src="" title="PDF Viewer" allow="fullscreen"
+                    style="display: none;"></iframe>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Book Detail Modal -->
+    <div id="detailModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">รายละเอียด E-Book</h3>
+                <button id="closeDetailModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <img id="detailCover" src="" alt="Cover"
+                        style="width: 140px; height: 190px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--border-color); shadow: var(--shadow-sm);">
+                    <div style="flex: 1; min-width: 200px;">
+                        <h2 id="detailTitle" style="font-size: 1.2rem; font-weight: 700; margin-bottom: 8px;">-</h2>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
+                            <i class="fas fa-building"></i> สำนัก/กอง: <span id="detailAuthor"
+                                style="color: var(--text-main); font-weight: 500;">-</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
+                            <i class="fas fa-folder"></i> หมวดหมู่: <span id="detailCategory" class="chip"
+                                style="padding: 2px 10px; font-size: 0.78rem;">-</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">
+                            <i class="fas fa-calendar-alt"></i> วันที่เผยแพร่: <span id="detailDate"
+                                style="color: var(--text-main);">-</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">
+                            <i class="fas fa-eye"></i> ยอดเข้าอ่าน: <span id="detailViews"
+                                style="color: var(--text-main); font-weight: 600;">0</span> ครั้ง
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 6px;">คำอธิบาย:</h4>
+                    <p id="detailDesc"
+                        style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; white-space: pre-line;">-
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="detailReadBtn" class="btn btn-primary" style="width: 100%;">
+                    <i class="fas fa-book-reader"></i> เปิดอ่าน Flipbook หนังสือเล่มนี้
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Admin Login PIN Modal -->
+    <div id="loginModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-lock"></i> เข้าสู่ระบบแอดมิน</h3>
+                <button id="closeLoginModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="pinInput">รหัส PIN ยืนยันตัวตน</label>
+                    <input type="password" id="pinInput" class="form-input" placeholder="กรอกรหัส PIN 4 หลัก"
+                        maxlength="10">
+                    <div id="loginErrorMsg"
+                        style="color: var(--accent-red); font-size: 0.8rem; margin-top: 6px; display: none;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="submitPinBtn" class="btn btn-primary" style="width: 100%;">
+                    <i class="fas fa-sign-in-alt"></i> ยืนยันรหัส PIN
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Admin Management Dashboard Modal -->
+    <div id="adminModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 960px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-tasks"></i> แผงจัดการ E-Book สำหรับแอดมิน</h3>
+                <button id="closeAdminModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button id="openAddBookBtn" class="btn btn-primary">
+                        <i class="fas fa-plus-circle"></i> เพิ่ม E-Book เล่มใหม่
+                    </button>
+                    <button id="openSettingsBtn" class="btn btn-secondary">
+                        <i class="fas fa-cog"></i> ตั้งค่า API / Google Apps Script
+                    </button>
+                    <button id="openSetupGuideBtn" class="btn btn-secondary"
+                        style="color: var(--brand-primary); border-color: rgba(59, 130, 246, 0.4);">
+                        <i class="fas fa-book-open"></i> คู่มือติดตั้ง Google Sheet & Drive
+                    </button>
+                </div>
+
+                <div class="admin-table-wrap">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>รูปปก</th>
+                                <th>ชื่อเรื่อง E-Book</th>
+                                <th>หมวดหมู่</th>
+                                <th>สำนัก/กอง</th>
+                                <th>คนอ่าน</th>
+                                <th>จัดการ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminBooksTableBody">
+                            <!-- Dynamic Rows -->
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Add / Edit E-Book Form Modal -->
+    <div id="bookFormModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <h3 id="bookFormTitleText" class="modal-title">เพิ่ม E-Book เล่มใหม่</h3>
+                <button id="closeBookFormModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="bookForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="inputTitle">ชื่อหนังสือ E-Book *</label>
+                        <input type="text" id="inputTitle" class="form-input"
+                            placeholder="เช่น คู่มือประชาชนประจำปี 2568" required>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="form-group">
+                            <label class="form-label" for="inputAuthor">สำนัก/กอง</label>
+                            <select id="inputAuthor" class="form-select">
+                                <option value="สำนักปลัด">สำนักปลัด</option>
+                                <option value="กองยุทธศาสตร์และงบประมาณ">กองยุทธศาสตร์และงบประมาณ</option>
+                                <option value="กองสวัสดิการสังคม">กองสวัสดิการสังคม</option>
+                                <option value="กองการศึกษา">กองการศึกษา</option>
+                                <option value="กองช่าง">กองช่าง</option>
+                                <option value="กองคลัง">กองคลัง</option>
+                                <option value="กองสาธารณสุขและสิ่งแวดล้อม">กองสาธารณสุขและสิ่งแวดล้อม</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="inputCategory">หมวดหมู่</label>
+                            <input type="text" id="inputCategory" class="form-input"
+                                placeholder="เช่น คู่มือประชาชน, วารสาร" list="categoryOptions">
+                            <datalist id="categoryOptions">
+                                <option value="คู่มือประชาชน"></option>
+                                <option value="วารสารประชาสัมพันธ์"></option>
+                                <option value="รายงานประจำปี"></option>
+                                <option value="แผนงานและยุทธศาสตร์"></option>
+                                <option value="เอกสารทั่วไป"></option>
+                            </datalist>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="inputDescription">คำอธิบาย</label>
+                        <textarea id="inputDescription" class="form-textarea" rows="3"
+                            placeholder="รายละเอียดเนื้อหาโดยสรุป..."></textarea>
+                    </div>
+
+                    <!-- PDF Upload Zone -->
+                    <div class="form-group">
+                        <label class="form-label">ไฟล์ E-Book (PDF File)</label>
+                        <div id="pdfDropzone" class="file-dropzone">
+                            <div class="dropzone-icon"><i class="fas fa-file-pdf"></i></div>
+                            <div class="dropzone-text">คลิกหรือลากไฟล์ PDF มาวางตรงนี้เพื่ออัพโหลดเข้า Google Drive
+                            </div>
+                            <div id="pdfFileNameLabel"
+                                style="font-size: 0.8rem; font-weight: 600; color: var(--brand-primary); margin-top: 6px;">
+                                ยังไม่ได้เลือกไฟล์ PDF</div>
+                        </div>
+                        <input type="file" id="pdfFileInput" accept="application/pdf" style="display: none;">
+
+                        <div style="margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                            หรือใส่ลิงก์ Google Drive View URL โดยตรง:
+                        </div>
+                        <input type="url" id="inputPdfDriveUrl" class="form-input" style="margin-top: 4px;"
+                            placeholder="https://drive.google.com/file/d/.../view?usp=sharing">
+                    </div>
+
+                    <!-- Cover Image Upload Zone -->
+                    <div class="form-group">
+                        <label class="form-label">รูปภาพหน้าปก (Cover Image)</label>
+                        <div id="coverDropzone" class="file-dropzone" style="padding: 16px;">
+                            <div class="dropzone-icon" style="font-size: 1.5rem;"><i class="fas fa-image"></i></div>
+                            <div class="dropzone-text">เลือกรูปภาพหน้าปก (JPG, PNG) อัพโหลดเข้า Google Drive</div>
+                            <div id="coverFileNameLabel"
+                                style="font-size: 0.8rem; font-weight: 600; color: var(--brand-primary); margin-top: 4px;">
+                                ยังไม่ได้เลือกไฟล์รูปปก</div>
+                        </div>
+                        <input type="file" id="coverFileInput" accept="image/*" style="display: none;">
+
+                        <div style="margin-top: 8px; font-size: 0.8rem; color: var(--text-muted);">
+                            หรือใส่ URL รูปภาพโดยตรง:
+                        </div>
+                        <input type="url" id="inputCoverUrl" class="form-input" style="margin-top: 4px;"
+                            placeholder="https://example.com/cover.jpg">
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" id="saveBookBtn" class="btn btn-primary">
+                        <i class="fas fa-save"></i> บันทึกข้อมูล E-Book
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 6. API Settings Modal -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-plug"></i> ตั้งค่าเชื่อมต่อ Google Apps Script API</h3>
+                <button id="closeSettingsModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
+                    คัดลอก Web App URL ที่ได้จากการกด **Deploy (การทำให้ใช้งานได้)** ใน Google Apps Script
+                    มาวางตรงนี้เพื่อเชื่อมต่อกับ Google Sheets & Google Drive
+                </p>
+
+                <div class="form-group">
+                    <label class="form-label" for="apiUrlInput">Google Apps Script Web App URL</label>
+                    <input type="url" id="apiUrlInput" class="form-input"
+                        placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <button type="button" id="testApiBtn" class="btn btn-secondary">
+                        <i class="fas fa-plug"></i> ทดสอบการเชื่อมต่อ
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="saveSettingsBtn" class="btn btn-primary">
+                    <i class="fas fa-save"></i> บันทึกการตั้งค่า
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Google Apps Script Setup Guide Modal -->
+    <div id="guideModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-book-open"></i> ขั้นตอนตั้งค่า Google Sheets & Drive API (5
+                    นาที)</h3>
+                <button id="closeGuideModalBtn" class="btn btn-icon"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body" style="font-size: 0.88rem; line-height: 1.7;">
+
+                <div
+                    style="background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--brand-primary); padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
+                    <strong>💡 ฟรี 100% ไม่เสียค่าบริการ Server</strong><br>
+                    ระบบนี้ใช้ Google Workspace (Google Drive + Sheets) ทำหน้าที่เป็นฐานข้อมูลและระบบจัดเก็บไฟล์ในตัว
+                </div>
+
+                <ol style="padding-left: 20px; display: flex; flex-direction: column; gap: 14px;">
+                    <li>
+                        <strong>สร้าง Google Sheet ใหม่</strong>:<br>
+                        เข้า <a href="https://sheets.new" target="_blank"
+                            style="color: var(--brand-primary);">sheets.new</a> บน Google Drive ของคุณ
+                    </li>
+                    <li>
+                        <strong>เปิด Apps Script Editor</strong>:<br>
+                        ไปที่เมนูด้านบนเลือก <code>ขยายส่วนต่าง ๆ (Extensions)</code> ➔ <code>Apps Script</code>
+                    </li>
+                    <li>
+                        <strong>คัดลอกสคริปต์ไปวาง</strong>:<br>
+                        ลบโค้ดเดิมออกทั้งหมด แล้วกดปุ่มด้านล่างเพื่อคัดลอกสคริปต์ <code>Code.gs</code>
+                        ไปวางในกล่องข้อความ
+                        <div style="margin-top: 8px;">
+                            <button type="button" id="copyScriptBtn" class="btn btn-secondary">
+                                <i class="fas fa-copy"></i> คัดลอกโค้ด Code.gs สำเร็จรูป
+                            </button>
+                        </div>
+                    </li>
+                    <li>
+                        <strong>กด Deploy (การทำให้ใช้งานได้)</strong>:<br>
+                        กดมุมขวาบน <code>การทำให้ใช้งานได้ (Deploy)</code> ➔
+                        <code>การทำให้ใช้งานได้รายการใหม่ (New Deployment)</code><br>
+                        - เลือกประเภท: <strong>เว็บแอป (Web App)</strong><br>
+                        - การอธิบาย: <em>WebE-Book API</em><br>
+                        - ผู้มีสิทธิ์เข้าถึง: <strong style="color: var(--accent-red);">ทุกคน (Anyone)</strong>
+                        *(สำคัญมาก)*
+                    </li>
+                    <li>
+                        <strong>นำ URL มาวางในเว็บ</strong>:<br>
+                        คัดลอก URL ของ Web App ที่ได้ นำมาใส่ในปุ่ม <strong>"ตั้งค่า API"</strong> ในแผงแอดมิน
+                    </li>
+                </ol>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeModal(document.getElementById('guideModal'))"
+                    class="btn btn-primary">
+                    รับทราบและเข้าใจแล้ว
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts Loading -->
+    <script src="js/app.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+
+</html>
