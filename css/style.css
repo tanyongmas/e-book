@@ -764,6 +764,32 @@ body {
   gap: 8px;
 }
 
+.zoom-controls-group {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  gap: 2px;
+}
+
+.zoom-controls-group .btn {
+  border: none !important;
+  background: transparent !important;
+  padding: 4px 8px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+  color: var(--text-main) !important;
+}
+
+.zoom-controls-group .btn:hover {
+  background: var(--bg-surface-hover) !important;
+  color: var(--brand-primary) !important;
+}
+
 .pdf-viewer-container {
   flex: 1;
   background: #212529;

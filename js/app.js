@@ -14,7 +14,10 @@ const CONFIG = {
   THEME_KEY: 'webebook_theme',
   ADMIN_PIN_KEY: 'webebook_admin_pin',
   DEFAULT_PIN: '1234',
-  INITIAL_RENDER_PAGES: 20 // จำนวนหน้าแรกที่ประมวลผลทันทีสำหรับหนังสือเล่มใหญ่
+  INITIAL_RENDER_PAGES: 20, // จำนวนหน้าแรกที่ประมวลผลทันทีสำหรับหนังสือเล่มใหญ่
+  MIN_ZOOM: 0.75,
+  MAX_ZOOM: 2.5,
+  ZOOM_STEP: 0.25
 };
 
 // Setup PDF.js Worker
@@ -38,7 +41,8 @@ let state = {
   totalPages: 1,
   currentPage: 1,
   pdfDocInstance: null,
-  renderedPageSet: new Set()
+  renderedPageSet: new Set(),
+  zoomLevel: 1.0
 };
 
 // DOM Element Selectors
@@ -71,6 +75,10 @@ const elements = {
   pdfOpenExternalBtn: document.getElementById('pdfOpenExternalBtn'),
   pdfDownloadBtn: document.getElementById('pdfDownloadBtn'),
   closePdfModalBtn: document.getElementById('closePdfModalBtn'),
+  zoomInBtn: document.getElementById('zoomInBtn'),
+  zoomOutBtn: document.getElementById('zoomOutBtn'),
+  zoomResetBtn: document.getElementById('zoomResetBtn'),
+  zoomLevelText: document.getElementById('zoomLevelText'),
 
   // Detail Modal
   detailModal: document.getElementById('detailModal'),
@@ -182,6 +190,17 @@ function initEventListeners() {
   // Mode Switcher
   if (elements.toggleViewerModeBtn) {
     elements.toggleViewerModeBtn.addEventListener('click', toggleViewerMode);
+  }
+
+  // Zoom Control Buttons
+  if (elements.zoomInBtn) {
+    elements.zoomInBtn.addEventListener('click', () => applyZoom(CONFIG.ZOOM_STEP));
+  }
+  if (elements.zoomOutBtn) {
+    elements.zoomOutBtn.addEventListener('click', () => applyZoom(-CONFIG.ZOOM_STEP));
+  }
+  if (elements.zoomResetBtn) {
+    elements.zoomResetBtn.addEventListener('click', () => applyZoom(0));
   }
 
   // Window Backdrop click
@@ -450,6 +469,7 @@ async function openPdfReader(book) {
   incrementViewCount(book.id);
 
   state.isFlipbookMode = true;
+  applyZoom(0);
   await loadPdfFlipbookDynamicBatch(book);
 }
 
@@ -840,7 +860,48 @@ function handleFullscreenChange() {
         state.pageFlipInstance.update();
       } catch (e) { }
     }
+    applyZoom(0);
   }, 150);
+}
+
+/**
+ * ระบบย่อ/ขยาย (Zoom In / Zoom Out / Reset Zoom) หน้ากระดาษ Flipbook
+ */
+function applyZoom(delta) {
+  if (delta === 0) {
+    state.zoomLevel = 1.0;
+  } else {
+    const nextZoom = state.zoomLevel + delta;
+    state.zoomLevel = Math.min(CONFIG.MAX_ZOOM, Math.max(CONFIG.MIN_ZOOM, parseFloat(nextZoom.toFixed(2))));
+  }
+
+  if (elements.zoomLevelText) {
+    elements.zoomLevelText.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+  }
+
+  const container = document.querySelector('.stpageflip--container');
+  if (container) {
+    const isDesktop = window.innerWidth > 768;
+    const isCover = elements.flipbookBook && elements.flipbookBook.getAttribute('data-current-page') === '1';
+    const isFS = document.fullscreenElement !== null;
+
+    let baseScale = isFS ? 1.15 : 1.0;
+    let totalScale = baseScale * state.zoomLevel;
+
+    if (isDesktop && isCover) {
+      container.style.transform = `translateX(-25%) scale(${totalScale})`;
+    } else {
+      container.style.transform = `scale(${totalScale})`;
+    }
+  }
+
+  if (elements.flipbookStage) {
+    if (state.zoomLevel > 1.0) {
+      elements.flipbookStage.style.overflow = 'auto';
+    } else {
+      elements.flipbookStage.style.overflow = 'hidden';
+    }
+  }
 }
 
 function destroyPageFlip() {
@@ -915,6 +976,7 @@ function closePdfModal() {
   if (document.fullscreenElement) {
     document.exitFullscreen().catch(() => { });
   }
+  applyZoom(0);
   elements.pdfModal.classList.remove('active');
   destroyPageFlip();
   elements.pdfIframe.src = 'about:blank';
