@@ -9,6 +9,7 @@
 
 // Initial State & Configuration
 const CONFIG = {
+  DEFAULT_API_URL: '', // วาง Google Apps Script Web App URL ของคุณที่นี่เพื่อเป็นค่าเริ่มต้นให้ทุกอุปกรณ์
   API_URL_KEY: 'webebook_api_url',
   THEME_KEY: 'webebook_theme',
   ADMIN_PIN_KEY: 'webebook_admin_pin',
@@ -29,7 +30,7 @@ let state = {
   activeCategory: 'ทั้งหมด',
   searchQuery: '',
   sortBy: 'latest',
-  apiUrl: localStorage.getItem(CONFIG.API_URL_KEY) || '',
+  apiUrl: localStorage.getItem(CONFIG.API_URL_KEY) || CONFIG.DEFAULT_API_URL || '',
   currentBook: null,
   isLoading: false,
   pageFlipInstance: null,
