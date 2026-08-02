@@ -465,15 +465,23 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
   let pdfDoc = null;
 
-  // 1. ดึง Base64 จาก Google Apps Script API
+  // 1. ดึง Base64 จาก Google Apps Script API (พร้อมระบบ Timeout 8 วินาที ป้องกันหมุนค้าง)
   if (state.apiUrl && fileId) {
     showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive...');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 วินาที Timeout
+
     try {
-      const res = await fetch(`${state.apiUrl}?action=getPdf&fileId=${fileId}`);
+      const res = await fetch(`${state.apiUrl}?action=getPdf&fileId=${fileId}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
       const json = await res.json();
 
       if (json.success && json.base64) {
         console.log(`[Batch Engine] Base64 payload received (${json.fileSize || json.base64.length} bytes)`);
+        showPdfLoading('กำลังประมวลผลโครงสร้างไฟล์ PDF...');
         const uint8Bytes = base64ToUint8Array(json.base64);
 
         const loadingTask = pdfjsLib.getDocument({
@@ -489,17 +497,22 @@ async function loadPdfFlipbookDynamicBatch(book) {
         state.pdfDocInstance = pdfDoc;
         console.log(`[Batch Engine] PDF structure parsed successfully (${pdfDoc.numPages} pages)`);
       } else {
-        console.warn('[Batch Engine] Apps Script API error:', json.error);
+        console.warn('[Batch Engine] Apps Script API error:', json ? json.error : 'Unknown response');
       }
     } catch (apiErr) {
-      console.warn('[Batch Engine] Fetch API error:', apiErr);
+      clearTimeout(timeoutId);
+      if (apiErr.name === 'AbortError') {
+        console.warn('[Batch Engine] Fetch PDF timed out (8s limit reached)');
+      } else {
+        console.warn('[Batch Engine] Fetch API error:', apiErr);
+      }
     }
   }
 
-  // Fallback เข้าสู่ Drive Viewer หากไม่สามารถดึงโครงสร้าง PDF ได้
+  // Fallback เข้าสู่ Drive Viewer หากไม่สามารถดึงโครงสร้าง PDF ได้ภายในเวลาที่กำหนด
   if (!pdfDoc) {
     console.warn('[Batch Engine] Cannot read PDF structure, switching to Drive Viewer mode');
-    switchToIframeMode('สลับเข้าสู่โหมด Google Drive Viewer');
+    switchToIframeMode('ไฟล์ขนาดใหญ่หรือใช้เวลาโหลดนาน สลับเข้าสู่โหมด Google Drive Viewer');
     return;
   }
 
@@ -531,8 +544,8 @@ async function loadPdfFlipbookDynamicBatch(book) {
       elements.flipbookBook.appendChild(pageDiv);
     }
 
-    // บนมือถือประมวลผล 8 หน้าแรกพอเพื่อให้เร็วและประหยัด RAM / คอมพิวเตอร์ประมวลผลตาม CONFIG
-    const initialLimit = Math.min(totalPages, isMobile ? 8 : CONFIG.INITIAL_RENDER_PAGES);
+    // เรนเดอร์เฉพาะ 20 หน้าแรกทันที เพื่อให้เปิดได้อย่างรวดเร็ว
+    const initialLimit = Math.min(totalPages, CONFIG.INITIAL_RENDER_PAGES);
     for (let pageNum = 1; pageNum <= initialLimit; pageNum++) {
       showPdfLoading(`กำลังประมวลผลหน้า 3D Flipbook ${pageNum} / ${initialLimit}...`);
       await renderPdfPageToElement(pdfDoc, pageNum);
@@ -574,7 +587,7 @@ async function loadPdfFlipbookDynamicBatch(book) {
       });
     }
 
-    // ทยอยประมวลผลหน้าที่เหลือในฉากหลัง (ทำเฉพาะบนคอมพิวเตอร์)
+    // ทยอยประมวลผลหน้าที่เหลือในฉากหลังอย่างนุ่มนวล ไม่ดึง CPU มือถือให้หน่วง
     backgroundRenderRemainingPages(pdfDoc, initialLimit + 1, totalPages);
 
   } catch (renderErr) {
@@ -671,19 +684,18 @@ async function ensurePagesRenderedAround(currentPage) {
 
 /**
  * วาดหน้าที่เหลือทั้งหมดทีละหน้าอย่างเงียบๆ ในฉากหลัง
+ * บนมือถือใช้การเว้นระยะเวลานุ่มนวล (Idle Throttle) ไม่ดึง CPU หรือทำให้เครื่องหน่วง
  */
 async function backgroundRenderRemainingPages(pdfDoc, startPage, totalPages) {
-  // บนมือถือ ปิดการโหลดฉากหลังทั้งหมดเพื่อถนอม RAM และ CPU มือถือไม่ให้หน่วง
-  if (isMobileDevice()) {
-    console.log('[Batch Engine] Mobile detected: Skipped full background rendering to preserve mobile RAM & CPU');
-    return;
-  }
+  const isMobile = isMobileDevice();
+  const delayMs = isMobile ? 250 : 50; // บนมือถือเว้นระยะ 250ms เพื่อไม่ให้ CPU ร้อนและไม่กิน RAM
 
   for (let p = startPage; p <= totalPages; p++) {
     if (!elements.pdfModal || !elements.pdfModal.classList.contains('active')) break;
     if (!state.renderedPageSet.has(p)) {
       await renderPdfPageToElement(pdfDoc, p);
-      await new Promise(r => setTimeout(r, 60));
+      if (isMobile) cleanupFarPages(state.currentPage);
+      await new Promise(r => setTimeout(r, delayMs));
     }
   }
 }
