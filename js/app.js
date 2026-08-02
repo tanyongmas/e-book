@@ -447,6 +447,13 @@ function getDriveEmbedUrl(url) {
 }
 
 /**
+ * ตรวจสอบว่าเป็นอุปกรณ์มือถือหรือไม่
+ */
+function isMobileDevice() {
+  return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+/**
  * โหลดและสร้าง 3D Flipbook ด้วยระบบ Dynamic Batch Rendering รองรับ PDF ใหญ่ 300+ หน้า
  */
 async function loadPdfFlipbookDynamicBatch(book) {
@@ -496,10 +503,11 @@ async function loadPdfFlipbookDynamicBatch(book) {
     return;
   }
 
-  // RENDER INITIAL BATCH OF PAGES (MAX 20 PAGES) FOR FAST MEMORY-SAFE START
+  // RENDER INITIAL BATCH OF PAGES (MAX 8 PAGES ON MOBILE / 20 PAGES ON DESKTOP)
   try {
     showPdfLoading('กำลังสร้าง 3D Flipbook...');
     const totalPages = pdfDoc.numPages;
+    const isMobile = isMobileDevice();
 
     state.totalPages = totalPages;
     elements.totalPagesText.textContent = totalPages;
@@ -523,8 +531,8 @@ async function loadPdfFlipbookDynamicBatch(book) {
       elements.flipbookBook.appendChild(pageDiv);
     }
 
-    // เรนเดอร์เฉพาะ 20 หน้าแรกทันที เพื่อให้เปิดได้อย่างรวดเร็วและไม่กิน RAM
-    const initialLimit = Math.min(totalPages, CONFIG.INITIAL_RENDER_PAGES);
+    // บนมือถือประมวลผล 8 หน้าแรกพอเพื่อให้เร็วและประหยัด RAM / คอมพิวเตอร์ประมวลผลตาม CONFIG
+    const initialLimit = Math.min(totalPages, isMobile ? 8 : CONFIG.INITIAL_RENDER_PAGES);
     for (let pageNum = 1; pageNum <= initialLimit; pageNum++) {
       showPdfLoading(`กำลังประมวลผลหน้า 3D Flipbook ${pageNum} / ${initialLimit}...`);
       await renderPdfPageToElement(pdfDoc, pageNum);
@@ -534,15 +542,15 @@ async function loadPdfFlipbookDynamicBatch(book) {
     await new Promise(resolve => setTimeout(resolve, 100));
     hidePdfLoading();
 
-    // เริ่มสร้าง 3D PageFlip Engine
+    // เริ่มสร้าง 3D PageFlip Engine พร้อมปรับขนาดตามหน้าจอ
     if (window.St && window.St.PageFlip) {
       const pageFlip = new St.PageFlip(elements.flipbookBook, {
-        width: 440,
-        height: 600,
+        width: isMobile ? 330 : 440,
+        height: isMobile ? 480 : 600,
         size: 'stretch',
-        minWidth: 280,
+        minWidth: 260,
         maxWidth: 600,
-        minHeight: 400,
+        minHeight: 380,
         maxHeight: 800,
         maxShadowOpacity: 0.5,
         showCover: true,
@@ -552,18 +560,21 @@ async function loadPdfFlipbookDynamicBatch(book) {
       pageFlip.loadFromHTML(elements.flipbookBook.querySelectorAll('.my-page'));
       state.pageFlipInstance = pageFlip;
 
-      // Event ติดตามการเปิดพลิกหน้า - ทยอยประมวลผลหน้าที่เหลือเมื่อผู้ใช้พลิกเข้าใกล้
+      // Event ติดตามการเปิดพลิกหน้า
       pageFlip.on('flip', (e) => {
         const current = e.data + 1;
         state.currentPage = current;
         elements.pageJumpInput.value = current;
 
-        // ประมวลผลหน้าที่อยู่รอบข้างในระยะ 10 หน้าถัดไป
+        // 1. ทยอยประมวลผลหน้าที่อยู่รอบข้างเข้าใกล้
         ensurePagesRenderedAround(current);
+
+        // 2. คืนหน่วยความจำ Canvas หน้าที่อยู่ไกลออกไปบนมือถือ (Memory Recycling)
+        cleanupFarPages(current);
       });
     }
 
-    // ทยอยประมวลผลหน้าที่เหลือทั้งหมดในฉากหลังเงียบๆ
+    // ทยอยประมวลผลหน้าที่เหลือในฉากหลัง (ทำเฉพาะบนคอมพิวเตอร์)
     backgroundRenderRemainingPages(pdfDoc, initialLimit + 1, totalPages);
 
   } catch (renderErr) {
@@ -583,7 +594,9 @@ async function renderPdfPageToElement(pdfDoc, pageNum) {
 
   try {
     const page = await pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: 1.4 });
+    // บนมือถือใช้ scale 1.0 เพื่อลดขนาด Canvas RAM ลง 50% / คอมพิวเตอร์ใช้ 1.35
+    const scale = isMobileDevice() ? 1.0 : 1.35;
+    const viewport = page.getViewport({ scale: scale });
     const canvas = document.createElement('canvas');
     canvas.className = 'page-canvas';
     const context = canvas.getContext('2d');
@@ -617,12 +630,37 @@ async function renderPdfPageToElement(pdfDoc, pageNum) {
 }
 
 /**
+ * คืนหน่วยความจำ Canvas ของหน้าที่อยู่ไกลเกินไปบนมือถือ (Mobile Memory Recycling)
+ * ช่วยป้องกันปัญหามือถือหน่วง RAM เต็ม หรือการหลุดจากโหมด 3D Flipbook
+ */
+function cleanupFarPages(currentPage) {
+  if (!isMobileDevice() || state.renderedPageSet.size < 16) return;
+
+  const maxDistance = 8; // ระยะห่างสูงสุดที่อนุญาตให้เก็บ Canvas ไว้ใน RAM มือถือ
+  for (const pageNum of Array.from(state.renderedPageSet)) {
+    if (Math.abs(pageNum - currentPage) > maxDistance) {
+      const pageDiv = document.getElementById(`myPage_${pageNum}`);
+      if (pageDiv) {
+        pageDiv.innerHTML = `
+          <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff; color:#64748b;">
+            <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:8px;"></i>
+            <span style="font-size:0.85rem; font-weight:600;">หน้า ${pageNum}</span>
+          </div>
+        `;
+      }
+      state.renderedPageSet.delete(pageNum);
+    }
+  }
+}
+
+/**
  * วาดหน้าที่อยู่รอบๆ หน้าปัจจุบันหากผู้ใช้พลิกไปถึง
  */
 async function ensurePagesRenderedAround(currentPage) {
   if (!state.pdfDocInstance) return;
-  const start = Math.max(1, currentPage - 4);
-  const end = Math.min(state.totalPages, currentPage + 10);
+  const isMobile = isMobileDevice();
+  const start = Math.max(1, currentPage - (isMobile ? 2 : 4));
+  const end = Math.min(state.totalPages, currentPage + (isMobile ? 5 : 10));
 
   for (let p = start; p <= end; p++) {
     if (!state.renderedPageSet.has(p)) {
@@ -635,11 +673,17 @@ async function ensurePagesRenderedAround(currentPage) {
  * วาดหน้าที่เหลือทั้งหมดทีละหน้าอย่างเงียบๆ ในฉากหลัง
  */
 async function backgroundRenderRemainingPages(pdfDoc, startPage, totalPages) {
+  // บนมือถือ ปิดการโหลดฉากหลังทั้งหมดเพื่อถนอม RAM และ CPU มือถือไม่ให้หน่วง
+  if (isMobileDevice()) {
+    console.log('[Batch Engine] Mobile detected: Skipped full background rendering to preserve mobile RAM & CPU');
+    return;
+  }
+
   for (let p = startPage; p <= totalPages; p++) {
-    if (!elements.pdfModal || !elements.pdfModal.classList.contains('active')) break; // หยุดถ้านักอ่านปิด Modal แล้ว
+    if (!elements.pdfModal || !elements.pdfModal.classList.contains('active')) break;
     if (!state.renderedPageSet.has(p)) {
       await renderPdfPageToElement(pdfDoc, p);
-      await new Promise(r => setTimeout(r, 40)); // หน่วง 40ms ป้องกันหน้าจอสะดุด
+      await new Promise(r => setTimeout(r, 60));
     }
   }
 }
