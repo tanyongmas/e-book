@@ -465,11 +465,11 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
   let pdfDoc = null;
 
-  // 1. ดึง Base64 จาก Google Apps Script API (พร้อมระบบ Timeout 8 วินาที ป้องกันหมุนค้าง)
+  // 1. ดึง Base64 จาก Google Apps Script API (ขยายเวลา Timeout เป็น 45 วินาที เพื่อให้ Flipbook โหลดเปิดได้สำเร็จ 100%)
   if (state.apiUrl && fileId) {
-    showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive...');
+    showPdfLoading('กำลังดาวน์โหลดไฟล์ PDF จาก Google Drive สำหรับ 3D Flipbook...');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 วินาที Timeout
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // ขยายเวลาเป็น 45 วินาที เพื่อรองรับไฟล์ขนาดใหญ่
 
     try {
       const res = await fetch(`${state.apiUrl}?action=getPdf&fileId=${fileId}`, {
@@ -481,7 +481,7 @@ async function loadPdfFlipbookDynamicBatch(book) {
 
       if (json.success && json.base64) {
         console.log(`[Batch Engine] Base64 payload received (${json.fileSize || json.base64.length} bytes)`);
-        showPdfLoading('กำลังประมวลผลโครงสร้างไฟล์ PDF...');
+        showPdfLoading('กำลังสร้างโครงสร้างหนังสือ 3D Flipbook...');
         const uint8Bytes = base64ToUint8Array(json.base64);
 
         const loadingTask = pdfjsLib.getDocument({
@@ -502,17 +502,17 @@ async function loadPdfFlipbookDynamicBatch(book) {
     } catch (apiErr) {
       clearTimeout(timeoutId);
       if (apiErr.name === 'AbortError') {
-        console.warn('[Batch Engine] Fetch PDF timed out (8s limit reached)');
+        console.warn('[Batch Engine] Fetch PDF timed out (45s limit reached)');
       } else {
         console.warn('[Batch Engine] Fetch API error:', apiErr);
       }
     }
   }
 
-  // Fallback เข้าสู่ Drive Viewer หากไม่สามารถดึงโครงสร้าง PDF ได้ภายในเวลาที่กำหนด
+  // Fallback เข้าสู่ Drive Viewer เฉพาะกรณีดึงไฟล์ไม่ได้จริงๆ หรือเกิน 45 วินาที
   if (!pdfDoc) {
     console.warn('[Batch Engine] Cannot read PDF structure, switching to Drive Viewer mode');
-    switchToIframeMode('ไฟล์ขนาดใหญ่หรือใช้เวลาโหลดนาน สลับเข้าสู่โหมด Google Drive Viewer');
+    switchToIframeMode('ไม่สามารถสร้าง 3D Flipbook ได้ สลับเข้าสู่โหมด Google Drive Viewer');
     return;
   }
 
